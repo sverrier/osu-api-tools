@@ -5,14 +5,15 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.TimerTask;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public class NeverBeenFCed {
+public class NeverBeenFCedController extends Thread {
     private Connection connection;
     private UtilAPI api;
 
-	public NeverBeenFCed(String k, int delay) {
+	public NeverBeenFCedController(String k, int delay) {
 		try {
 			Class.forName("org.postgresql.Driver");
 			this.connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
@@ -22,6 +23,12 @@ public class NeverBeenFCed {
     		System.out.println(e.getLocalizedMessage());
     	}
 		
+	}
+	
+	public void run() {
+		while(true) {
+			newFCs();
+		}
 	}
 	
 	/*
@@ -43,7 +50,6 @@ public class NeverBeenFCed {
 				ResultSet beatmap = s2.executeQuery("select maxcombo from beatmaps where beatmap_id = " + map_id);
 				beatmap.next();
 				String maxcombo = beatmap.getString("maxcombo");
-				System.out.println(map_id);
 				
 				ArrayList<Score> scores = api.getScores(map_id, null, null);
 				for(Score score : scores) {

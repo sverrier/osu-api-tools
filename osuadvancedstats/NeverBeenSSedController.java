@@ -8,26 +8,37 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.TimerTask;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-
-public class NeverBeenSSed {
+public class NeverBeenSSedController extends Thread {
 	private Connection connection;
     private UtilAPI api;
+    
+    private int task = 0;
 
-	public NeverBeenSSed(String k, int delay) {
+	public NeverBeenSSedController(String k, int delay, int task) {
 		try {
 			Class.forName("org.postgresql.Driver");
 			this.connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
+			this.task = task;
 			api = new UtilAPI(k, delay);
 			
     	} catch(Exception e) {
     		System.out.println(e.getLocalizedMessage());
     	}	
+	}
+	
+	public void run() {
+		if(task == 0) {
+			while(true) {
+				newSSs(100, "stars");
+			}
+		} else {
+			newSSs(5000, "stars");
+			uniqueSSs(5000);
+		}
 	}
 	
 	public void newSSs(int limit, String order) {
@@ -40,7 +51,6 @@ public class NeverBeenSSed {
             int scoreUpdates = 0;
 			while (idSet.next()) {
 				String map_id = idSet.getString("beatmap_id");
-				System.out.println(map_id);
 				boolean found = false;
 				String mods[] = {null, "0", "8", "16416"};
 				for(String mod : mods) {
@@ -59,7 +69,7 @@ public class NeverBeenSSed {
 							
 							s2.executeUpdate(query);
 							
-							System.out.println(score.beatmap_id + "," + score.user_id + "," + score.date_played + ", " + scoreUpdates + " updates");
+							System.out.println("New SS: " + score.beatmap_id + "," + score.user_id + "," + score.date_played + ", " + scoreUpdates + " updates");
 							query = "delete from neverbeenssed where beatmap_id = " + score.beatmap_id;
 							s2.executeUpdate(query);
 							found = true;
@@ -84,7 +94,6 @@ public class NeverBeenSSed {
             ResultSet idSet = s.executeQuery("select unique_ss.beatmap_id from unique_ss inner join beatmaps on unique_ss.beatmap_id = beatmaps.beatmap_id order by stars limit " + limit);
 			while (idSet.next()) {
 				String map_id = idSet.getString("beatmap_id");
-				System.out.println(map_id);
 				int ss_count = 0;
 				ArrayList<String> userIDs = new ArrayList<>();
 				ArrayList<ArrayList<Score>> scores = new ArrayList<>();

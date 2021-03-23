@@ -23,21 +23,20 @@ public class CsvController {
 	        LocalDateTime last = LocalDateTime.parse(end, format);
 			while (true) {	
 		        int counter = 0;
-				LocalDateTime current = LocalDateTime.parse(start, format);
-				if(current.isAfter(last)) {
-					break;
-				}
-				
 	        	ArrayList<Beatmap> beatmaps = api.getBeatmaps(start);
 	        	for(Beatmap b : beatmaps) {
 	        		if (b.approved.equals("1") || b.approved.equals("2")) {
+	        			LocalDateTime current = LocalDateTime.parse(b.approved_date, format);
+	    				if(current.isAfter(last)) {
+	    					return ids;
+	    				}
 	        			ids.add(b.beatmap_id);
 	        			counter++;
 	        		}
 	        	}
 	        	
 	        	if(counter == 0) {
-	        		break;
+	        		return ids;
 	        	}
 	        	counter = 0;
 	        	String newTime = beatmaps.get(beatmaps.size() - 1).approved_date;      

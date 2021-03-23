@@ -44,8 +44,9 @@ public class User {
 		this.count_rank_s = getString(j.get("count_rank_s"));
 		this.count_rank_sh = getString(j.get("count_rank_sh"));
 		this.count_rank_a = getString(j.get("count_rank_a"));
+		this.country = getString(j.get("country"));
 		this.total_seconds_played = getString(j.get("total_seconds_played"));
-		this.pp_country_rank = getString(j.get("pp_country_rank"));
+		this.pp_country_rank = getString(j.get("pp_country_rank"));	
 	}
 	
 	

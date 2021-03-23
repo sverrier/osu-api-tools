@@ -23,30 +23,24 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.TimerTask;
 
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
-
 /**
  *
  * @author samuel
  */
-public class DatabaseController extends TimerTask {
-    private String key = "";
-    private int task;
+public class DatabaseController extends Thread {
     private int counter = 0;
+    
+    private int task;
     
     private Connection connection;
     private UtilAPI api;
 
-    public DatabaseController(String k, int task, int delay) {
+    public DatabaseController(String key, int delay, int task) {
     	try {
-	        this.key = k;
 	        this.task = task;
 			Class.forName("org.postgresql.Driver");
 			this.connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
-			api = new UtilAPI(k, delay);
+			api = new UtilAPI(key, delay);
 			
     	} catch(Exception e) {
     		System.out.println(e.getLocalizedMessage());
@@ -55,45 +49,41 @@ public class DatabaseController extends TimerTask {
     
     @Override
     public void run() {
-    	
-    	switch(task) {
-    	case 2:
-    		topHundredLookup("2007-06-01 00:00:00", "2020-12-31 23:59:59");
-    		break;
-    	case 3:
-    		fetchBeatmaps("2021-02-01");
-    		break;
-    	case 4:
-    		//newFCs(delay);
-    		break;
-    	case 5:
-    		//newSSs(100, "stars", delay);
-    		break;
-    	case 6:
-    		break;
-    	case 7:
-    		updatePriorityPlayers(1000);
-    		break;
-    	case 9:
+    	if(task == 0) {
+    		while(true) {
+    			fetchBeatmaps("2021-03-01 00:00:00", "2022-01-01 00:00:00");
+    			updatePriorityPlayers(1000);
+    			playerLookupSpecific(1);
+    			playerBeatmapLookup();
+    		}
+    		
+    	} else {
+    		topHundredLookup("2007-01-01 00:00:00", "2022-01-01 00:00:00");
+    		OsuQuerier.yearlyQueries(2007, 2021);
     		OsuQuerier.bonusQueries();
-    		break;
-    	default:
-    		break;
     	}
+    	
     }
     
     /*
      * Fetches the ranked beatmaps starting from a given date
      */
-    public void fetchBeatmaps(String since) {
+    public void fetchBeatmaps(String start, String end) {
         try {
             Statement s = connection.createStatement();
             int counter = 0;
             int total = 0;
+            DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");  
+	        LocalDateTime last = LocalDateTime.parse(end, format);
             while (true) {		
-            	ArrayList<Beatmap> beatmaps = api.getBeatmaps(since);
+            	ArrayList<Beatmap> beatmaps = api.getBeatmaps(start);
             	for(Beatmap b : beatmaps) {
             		if (b.approved.equals("1") || b.approved.equals("2")) {
+            			LocalDateTime current = LocalDateTime.parse(b.approved_date, format);
+	    				if(current.isAfter(last)) {
+	    					s.close();
+	    					return;
+	    				}
             			String insert = b.getInsert("beatmaps");
             			int isNew = s.executeUpdate(insert);
 	            		counter += isNew;
@@ -106,21 +96,24 @@ public class DatabaseController extends TimerTask {
             		}
             	}
             	
+            	//Find out if the end of the beatmaps has been reached by checking the date
             	String newTime = beatmaps.get(beatmaps.size() - 1).approved_date;
-                DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");  
-            	since = LocalDateTime.parse(newTime, format).minusHours(1).format(format);
+	        	newTime = LocalDateTime.parse(newTime, format).minusHours(1).format(format);
+
+            	if(newTime.equalsIgnoreCase(start)) {
+            		s.close();
+                	return;
+            	}
+            	
+            	//continue fetching
+            	start = newTime;
             	
                 total += counter;
-            	if (counter == 0) {
-                	break;
-                }
             	counter = 0;
                 
                 System.out.println(total);
-                System.out.println(since);
+                System.out.println(start);
             }
-            s.close();
-
         } catch (Exception ex) {
             System.out.println(ex.getLocalizedMessage());
         } 
@@ -291,7 +284,7 @@ public class DatabaseController extends TimerTask {
     	}
     }
     
-    public void playerBeatmapLookup(int delay) {
+    public void playerBeatmapLookup() {
     	try {
     		Class.forName("org.postgresql.Driver");
             Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
@@ -325,7 +318,7 @@ public class DatabaseController extends TimerTask {
     	}
     }
 
-	public void fetchPlayers(String tableName, int limit, int delay) {
+	public void fetchPlayers(String tableName, int limit) {
 		try {
 			Statement s = connection.createStatement();
             Statement s2 = connection.createStatement();
@@ -355,88 +348,6 @@ public class DatabaseController extends TimerTask {
 		return api.getUser(userID);
 	}
     
-    public void updatePlayers(String tableName, int limit, int delay) {
-        try {	
-            Statement s = connection.createStatement();
-            ResultSet idSet = s.executeQuery("select user_id from " + tableName + " limit " + limit + ";");
-            int total = 0;
-            
-            while(idSet.next()) {
-            	boolean complete = false;
-            	while(!complete) {
-            		try {
-						String userID = idSet.getString("user_id");
-						URL url = new URL("https://osu.ppy.sh/api/get_user?k=" + key + "&u=" + userID);
-						Thread.sleep(delay);
-						BufferedReader in = new BufferedReader(new InputStreamReader(url.openStream()));
-						String inputLine;
-						while ((inputLine = in.readLine()) != null) {
-							JSONParser parser = new JSONParser();
-							JSONArray json = (JSONArray) parser.parse(inputLine);
-							
-							if(json.size() == 0) {
-								complete = true;
-							}
-
-							for (int i = 0; i < json.size(); i++) {
-								JSONObject j = (JSONObject) json.get(i);
-								String user_id = userID;
-								String username = toString(j.get("username")).replaceAll("'", "''");
-								String join_date = toString(j.get("join_date"));
-								String count300 = toString(j.get("count300"));
-								String count100 = toString(j.get("count100"));
-								String count50 = toString(j.get("count50"));
-								String playcount = toString(j.get("playcount"));
-								String ranked_score = toString(j.get("ranked_score"));
-								String total_score = toString(j.get("total_score"));
-								String pp_rank = toString(j.get("pp_rank"));
-								String pp = toString(j.get("pp_raw"));
-								String level = toString(j.get("level"));
-								String accuracy = toString(j.get("accuracy"));
-								String ssh_count = toString(j.get("count_rank_ssh"));
-								String ss_count = toString(j.get("count_rank_ss"));
-								String sh_count = toString(j.get("count_rank_sh"));
-								String s_count = toString(j.get("count_rank_s"));
-								String a_count = toString(j.get("count_rank_a"));
-								String country = toString(j.get("country"));
-								String playtime = toString(j.get("total_seconds_played"));
-
-								String c = ",";
-								String q = "'";
-								String insert = "INSERT INTO USERS VALUES (" + user_id + c + q + username + q + c + q
-										+ join_date + q + c + count300 + c + count100 + c + count50 + c + playcount + c
-										+ ranked_score + c + total_score + c + pp_rank + c + pp + c + level + c
-										+ accuracy + c + ssh_count + c + ss_count + c + sh_count + c + s_count + c
-										+ a_count + c + q + country + q + c + playtime
-										+ ") ON CONFLICT (user_id) DO UPDATE SET username = " + q + username + q
-										+ ",count300 = " + count300 + ",count100 = " + count100 + ",count50 = "
-										+ count50 + ",playcount = " + playcount + ",pp = " + pp + ",ssh_count = "
-										+ ssh_count + ",ss_count = " + ss_count + ",sh_count = " + sh_count
-										+ ",s_count = " + s_count + ",a_count = " + a_count + ",ranked_score = " + ranked_score
-										+ ",total_score = " + total_score + ",level = " + level + ",pp_rank = " + pp_rank 
-										+ ",accuracy = " + accuracy + ",playtime = " + playtime + ",country = " + q + country + q + ";";
-
-								Statement s2 = connection.createStatement();
-								total += s2.executeUpdate(insert);
-								System.out.println("Updated player " + username + ", total fetched: " + total);
-								complete = true;
-							}
-						}
-						
-            		} catch(Exception e) {
-            			System.out.println(e.getLocalizedMessage());
-            			Thread.sleep(10000);
-            		}
-            	}
-            }
-            
-            connection.close();
-            
-        } catch(Exception e) {
-        	System.out.println(e.getLocalizedMessage());
-        }
-        
-    }
     
     public void updatePriorityPlayers(int limit) {
         try {	
@@ -468,80 +379,6 @@ public class DatabaseController extends TimerTask {
         
     }
     
-    public void fetchMappers(int limit, int delay) {
-        try {
-            Class.forName("org.postgresql.Driver");
-            Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
-            Statement s = connection.createStatement();
-            ResultSet idSet = s.executeQuery("select creator_id, count(*) from beatmaps where creator_id NOT IN (select user_id from users) group by creator_id order by count desc limit " + limit);
-            int total = 0;
-            
-            while(idSet.next()) {
-                String userID = idSet.getString("creator_id");
-                URL url = new URL("https://osu.ppy.sh/api/get_user?k=" + key + "&u=" + userID );
-                Thread.sleep(delay);
-                BufferedReader in = new BufferedReader(
-                        new InputStreamReader(
-                                url.openStream()));
-                String inputLine;
-                while ((inputLine = in.readLine()) != null) {
-                    JSONParser parser = new JSONParser();
-                    JSONArray json = (JSONArray) parser.parse(inputLine);
-                    
-                    for (int i = 0; i < json.size(); i++) {
-                        JSONObject j = (JSONObject) json.get(i);
-                        String user_id = userID;
-                        String username = toString(j.get("username")).replaceAll("'", "''");
-                        String join_date = toString(j.get("join_date"));
-                        String count300 = toString(j.get("count300"));
-                        String count100 = toString(j.get("count100"));
-                        String count50 = toString(j.get("count50"));
-                        String playcount = toString(j.get("playcount"));
-                        String ranked_score = toString(j.get("ranked_score"));
-                        String total_score = toString(j.get("total_score"));
-                        String pp_rank = toString(j.get("pp_rank"));
-                        String pp = toString(j.get("pp_raw"));
-                        String level = toString(j.get("level"));
-                        String accuracy = toString(j.get("accuracy"));
-                        String ssh_count = toString(j.get("count_rank_ssh"));
-                        String ss_count = toString(j.get("count_rank_ss"));
-                        String sh_count = toString(j.get("count_rank_sh"));
-                        String s_count = toString(j.get("count_rank_s"));
-                        String a_count = toString(j.get("count_rank_a"));
-                        String country = toString(j.get("country"));
-                        String playtime = toString(j.get("total_seconds_played"));
-                        
-                        String c = ",";
-                        String q = "'";
-                        String insert = "INSERT INTO USERS VALUES ("+user_id+c+q+username+q+c+q+join_date+q+c+count300+c+count100
-                                +c+count50+c+playcount+c+ranked_score+c+total_score+c+pp_rank+c+pp+c+level+c+accuracy+c+ssh_count
-                                +c+ss_count+c+sh_count+c+s_count+c+a_count+c+q+country+q+c+playtime + ") ON CONFLICT DO NOTHING;";
-                        
-                        Statement s2 = connection.createStatement();
-                        total += s2.executeUpdate(insert);
-                        System.out.println("New players fetched: " + total);
-                    }
-                }
-            }
-            
-            connection.close();
-            
-        } catch(SQLException ex) {
-            Logger.getLogger(DatabaseController.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (ClassNotFoundException ex) {
-            Logger.getLogger(DatabaseController.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (MalformedURLException ex) {
-            Logger.getLogger(DatabaseController.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (InterruptedException ex) {
-            Logger.getLogger(DatabaseController.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException ex) {
-            Logger.getLogger(DatabaseController.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (ParseException ex) {
-            Logger.getLogger(DatabaseController.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        
-    }
-
     public String toString(Object o) {
         if (o == null) {
             return "-1";

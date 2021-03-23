@@ -42,7 +42,7 @@ public class Beatmap {
 	public String video;
 	public String download_unavailable;
 	public String audio_unavailable;
-	
+		
 	public Beatmap(JSONObject j) {
 		this.approved = getString(j.get("approved"));
 		this.submit_date = getString(j.get("submit_date"));
