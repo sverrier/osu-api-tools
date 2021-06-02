@@ -101,6 +101,21 @@ public class Beatmap {
 		return insert;
 	}
 	
+	public String getUpsert(String tableName) {
+		String c = ",";
+		String q = "'";
+		String insert = "INSERT INTO BEATMAPS VALUES ("
+                + beatmap_id + c + approved + c + q + submit_date + q + c + q + approved_date + q + c + q + last_update + q + c + q + artist.replaceAll("'", "''") + q 
+                + c  + beatmapset_id + c + bpm + c + q + creator.replaceAll("'", "''") + q + c + creator_id + c + difficultyrating + c + diff_aim
+                + c + diff_speed + c + diff_size + c + diff_overall + c + diff_approach + c + diff_drain + c
+                + hit_length + c + q + source.replaceAll("'", "''") + q + c + genre_id + c + language_id + c + q + title.replaceAll("'", "''") + q + c + total_length
+                + c + q + version.replaceAll("'", "''") + q + c + q + file_md5 + q + c + mode + c + q + tags.replaceAll("'", "''") + q + c + favorite_count + c + rating + c + playcount + c
+                + passcount + c + count_normal + c + count_slider + c + count_spinner + c + max_combo + c + storyboard + c + video
+                + c + download_unavailable + c + audio_unavailable
+                + ") ON CONFLICT (beatmap_id) DO UPDATE SET playcount=EXCLUDED.playcount, passcount=EXCLUDED.passcount";
+		return insert;
+	}
+	
 	public String getString(Object o) {
         if (o == null) {
             return "-1";

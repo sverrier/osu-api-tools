@@ -55,6 +55,10 @@ public class DatabaseController extends Thread {
     			updatePriorityPlayers(1000);
     			playerLookupSpecific(1);
     			playerBeatmapLookup();
+    			if(counter % 10 == 0) { 
+    				OsuQuerier.updateAll();
+    			}
+    			counter++;
     		}
     		
     	} else {
@@ -66,7 +70,7 @@ public class DatabaseController extends Thread {
     }
     
     /*
-     * Fetches the ranked beatmaps starting from a given date
+     * Fetches the ranked beatmaps in a given range
      */
     public void fetchBeatmaps(String start, String end) {
         try {
@@ -93,6 +97,54 @@ public class DatabaseController extends Thread {
 	                    	insert = "insert into neverbeenssed values(" + b.beatmap_id + ") ON CONFLICT DO NOTHING;";
 	                    	s.executeUpdate(insert);
 	                    }
+            		}
+            	}
+            	
+            	//Find out if the end of the beatmaps has been reached by checking the date
+            	String newTime = beatmaps.get(beatmaps.size() - 1).approved_date;
+	        	newTime = LocalDateTime.parse(newTime, format).minusHours(1).format(format);
+
+            	if(newTime.equalsIgnoreCase(start)) {
+            		s.close();
+                	return;
+            	}
+            	
+            	//continue fetching
+            	start = newTime;
+            	
+                total += counter;
+            	counter = 0;
+                
+                System.out.println(total);
+                System.out.println(start);
+            }
+        } catch (Exception ex) {
+            System.out.println(ex.getLocalizedMessage());
+        } 
+    }
+    
+    /*
+     * Updates the ranked beatmaps in a given range
+     */
+    public void updateBeatmaps(String start, String end) {
+        try {
+            Statement s = connection.createStatement();
+            int counter = 0;
+            int total = 0;
+            DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");  
+	        LocalDateTime last = LocalDateTime.parse(end, format);
+            while (true) {		
+            	ArrayList<Beatmap> beatmaps = api.getBeatmaps(start);
+            	for(Beatmap b : beatmaps) {
+            		if (b.approved.equals("1") || b.approved.equals("2")) {
+            			LocalDateTime current = LocalDateTime.parse(b.approved_date, format);
+	    				if(current.isAfter(last)) {
+	    					s.close();
+	    					return;
+	    				}
+            			String insert = b.getUpsert("beatmaps");
+            			int isNew = s.executeUpdate(insert);
+	            		counter += isNew;
             		}
             	}
             	
@@ -180,7 +232,8 @@ public class DatabaseController extends Thread {
     		Class.forName("org.postgresql.Driver");
             Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
             Statement s = connection.createStatement();
-            ResultSet idSet = s.executeQuery("select user_id from users limit " + limit);
+            Statement s2 = connection.createStatement();
+            ResultSet idSet = s.executeQuery("select user_id from users order by pp_raw desc limit " + limit);
             int total = 0;
             int total2 = 0;
             int counter = 0;
@@ -189,11 +242,11 @@ public class DatabaseController extends Thread {
             	ArrayList<Score> scores = api.getUserBest(user_id);
             	for(Score score : scores) {
             		String insert = score.getInsertWithScoreID("scores");
-            		total += s.executeUpdate(insert);
+            		total += s2.executeUpdate(insert);
             		insert = score.getInsert("maxscore", "maxscore_pkey");
-            		total2 += s.executeUpdate(insert);
-					counter++;		
+            		total2 += s2.executeUpdate(insert);
             	} 
+				counter++;		
             	System.out.println("Users processed: " + counter + ", total new plays fetched: " + total + "; maxscore updates = " + total2);
             }
             s.close();
@@ -256,7 +309,7 @@ public class DatabaseController extends Thread {
 				String optimized = temp.getObject("optimized").toString();
 				
 				String q = "select beatmap_id from beatmaps where mode = 0 and approved_date BETWEEN '" + start + "' and '" + end
-						+ "' and stars >= " + mindiff + " and stars < " + maxdiff;
+						+ "' and round(stars, 2) >= " + mindiff + " and round(stars, 2) < " + maxdiff;
 				if(optimized.equals("1")) {
 					q = q + " and beatmap_id not in (select distinct beatmap_id from maxscore where user_id = " + userID + ")";
 				}
@@ -351,8 +404,6 @@ public class DatabaseController extends Thread {
     
     public void updatePriorityPlayers(int limit) {
         try {	
-            Class.forName("org.postgresql.Driver");
-            Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
             Statement s = connection.createStatement();
             Statement s2 = connection.createStatement();
             ResultSet idSet = s.executeQuery("select user_id from priorityuser limit " + limit + ";");

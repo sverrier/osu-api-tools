@@ -24,6 +24,7 @@ public class Score {
 	
 	//non-api fields
 	public String beatmap_id;
+	public float ppv1;
 	
 	public Score(JSONObject j) {
 		this.score_id = getString(j.get("score_id"));

@@ -36,8 +36,11 @@ public class NeverBeenSSedController extends Thread {
 				newSSs(100, "stars");
 			}
 		} else {
-			newSSs(5000, "stars");
-			uniqueSSs(5000);
+			while(true) {
+				newSSs(5000, "stars");
+				uniqueSSs(5000);
+			}
+			
 		}
 	}
 	

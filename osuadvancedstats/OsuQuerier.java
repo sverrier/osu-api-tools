@@ -43,11 +43,11 @@ public class OsuQuerier {
 				System.out.println(i + " score");
 				
 				query = "COPY (select username, (weighted_pp(pp_index, max_pp) + bonus_pp(count(pp_index))) as weighted_pp "
-						+ "from (select scores.user_id, scores.beatmap_id, max(scores.pp) as max_pp, "
-						+ "ROW_NUMBER() OVER(partition by scores.user_id order by max(scores.pp) desc) as pp_index "
-						+ "from scores inner join beatmaps on scores.beatmap_id = beatmaps.beatmap_id "
+						+ "from (select maxscore.user_id, maxscore.beatmap_id, max(maxscore.pp) as max_pp, "
+						+ "ROW_NUMBER() OVER(partition by maxscore.user_id order by max(maxscore.pp) desc) as pp_index "
+						+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
 						+ "where approved_date between '" + i + "-01-01 00:00:00' and '" + i + "-12-31 23:59:59' "
-						+ "group by scores.user_id, scores.beatmap_id) as a inner join users on a.user_id = users.user_id "
+						+ "group by maxscore.user_id, maxscore.beatmap_id) as a inner join users on a.user_id = users.user_id "
 						+ "group by username order by weighted_pp desc limit 5000) "
 						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\weightedpp_" + i + ".csv' DELIMITER ',' CSV HEADER;";
 				s.execute(query);
@@ -80,10 +80,10 @@ public class OsuQuerier {
 				s.execute(query);
 				System.out.println(i + " top 50s");
 				
-				query = "COPY (select username, sum(max_pp) as total_pp from (select user_id, scores.beatmap_id, "
-						+ "max(pp) as max_pp from scores inner join beatmaps on scores.beatmap_id = beatmaps.beatmap_id "
+				query = "COPY (select username, sum(max_pp) as total_pp from (select user_id, maxscore.beatmap_id, "
+						+ "max(pp) as max_pp from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
 						+ "where approved_date between '" + i + "-01-01 00:00:00' and '" + i + "-12-31 23:59:59' "
-						+ "group by user_id, scores.beatmap_id) as a inner join users on a.user_id = users.user_id "
+						+ "group by user_id, maxscore.beatmap_id) as a inner join users on a.user_id = users.user_id "
 						+ "group by username order by total_pp desc limit 5000) "
 						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\totalpp_" + i + ".csv' DELIMITER ',' CSV HEADER;";
 				s.execute(query);
@@ -167,6 +167,110 @@ public class OsuQuerier {
 			System.out.println(e.getLocalizedMessage());
 		}
 		
+	}
+	
+	public static void globalRankings() {
+		try {
+			
+			Class.forName("org.postgresql.Driver");
+			Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres",
+					"root");
+			Statement s = connection.createStatement();
+			
+			/*String query = "COPY (select username, score from (select user_id, sum(scorezero) as score from "
+					+ "(select user_id, set_id,  max(score) as scorezero from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "group by user_id, set_id) s group by user_id) t inner join users on t.user_id = users.user_id order by score desc) "
+					+ "TO 'C:\\\\Users\\\\sensa\\\\Documents\\\\VSCode\\\\bot\\\\data\\\\scorev0.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("scorev0");*/
+			
+			String query = "COPY (select username, pow(score, 0.5) as score from (select user_id, sum(pow(score, 2)) as score from maxscore group by user_id) a "
+			+ "inner join users on a.user_id = users.user_id order by score desc limit 10000) "
+			+ "TO 'C:\\\\Users\\\\sensa\\\\Documents\\\\VSCode\\\\bot\\\\data\\\\scoresquared.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("score rms");
+			
+			query = "COPY (select username, (weighted_pp(score_index, score) + bonus_pp(count(score_index))) as weighted_score "
+					+ "from (select maxscore.user_id, maxscore.beatmap_id, score, "
+					+ "ROW_NUMBER() OVER(partition by user_id order by score desc) as score_index "
+					+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "group by user_id, maxscore.beatmap_id) as a inner join users on a.user_id = users.user_id "
+					+ "group by username order by weighted_score desc limit 5000) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\weightedscore.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("weighted score");
+			
+			double values[] = {0.90, 0.95, 0.97, 0.98, 0.99, 0.995, 0.999};
+			for(double v : values) {
+				query = "COPY (select username, (weighted_pp(pp_index, max_pp, " + v + ") + bonus_pp(count(pp_index))) as weighted_pp "
+						+ "from (select maxscore.user_id, maxscore.beatmap_id, max(maxscore.pp) as max_pp, "
+						+ "ROW_NUMBER() OVER(partition by maxscore.user_id order by max(maxscore.pp) desc) as pp_index "
+						+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+						+ "group by maxscore.user_id, maxscore.beatmap_id) as a inner join users on a.user_id = users.user_id "
+						+ "group by username order by weighted_pp desc limit 5000) "
+						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\weightedpp_" + v + ".csv' DELIMITER ',' CSV HEADER;";
+				s.execute(query);
+				System.out.println("weighted pp");
+			}
+			
+			query = "COPY (select username, fc_score from (select user_id, sum(score) as fc_score "
+					+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "where (maxcombo - combo) <= count100 and countmiss = 0 and enabled_mods not in (select value from mods where name like '%HT%' or name like '%EZ%') "
+					+ "group by user_id) a inner join users on a.user_id = users.user_id "
+					+ " order by fc_score desc limit 5000) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\fcscore.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("fc score");
+			
+			query = "COPY (select username, sum(score) as ss_score "
+					+ "from maxscore inner join users on maxscore.user_id = users.user_id "
+					+ "where rank like '%X%' and enabled_mods not in (select value from mods where name like '%HT%' or name like '%EZ%') "
+					+ "group by username order by ss_score desc limit 5000) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\ssscore.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("ss score");
+			
+			query = "COPY (select username, count(*) as top_1s from (select tophundred.user_id, tophundred.beatmap_id, "
+					+ "ROW_NUMBER() OVER(partition by tophundred.beatmap_id order by score desc) as beatmap_rank "
+					+ "from tophundred inner join beatmaps on tophundred.beatmap_id = beatmaps.beatmap_id) a inner join users on a.user_id = users.user_id "
+					+ "where a.beatmap_rank = 1 group by username order by top_1s desc limit 5000) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\top1_full.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("#1s");
+			
+			query = "COPY (select username, count(*) as top_50s from (select tophundred.user_id, tophundred.beatmap_id, "
+					+ "ROW_NUMBER() OVER(partition by tophundred.beatmap_id order by score desc) as beatmap_rank "
+					+ "from tophundred inner join beatmaps on tophundred.beatmap_id = beatmaps.beatmap_id) a inner join users on a.user_id = users.user_id "
+					+ "where a.beatmap_rank <= 50 group by username order by top_50s desc limit 5000) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\top50_full.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("top 50s");
+			
+			query = "COPY (select username, sum(max_pp) as total_pp from (select user_id, maxscore.beatmap_id, "
+					+ "max(pp) as max_pp from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "group by user_id, maxscore.beatmap_id) as a inner join users on a.user_id = users.user_id "
+					+ "group by username order by total_pp desc limit 5000) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\totalpp_full.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("total pp");
+			
+			query = "Copy (select username, ROUND((weighted_pp(final.pp_index, final.pp) + bonus_pp(count(pp_index))), 2) as weighted_pp "
+					+ "from (select user_ID, pp, ROW_NUMBER() OVER(partition by user_id order by pp desc) as pp_index "
+					+ "from (select user_id, beatmap_id, true_pp_classic(diffcalc(stars, position), timemult(days), statusmult(rank, perfect), "
+					+ "modmult(enabled_mods), popularitymult(playcount), ssmult(ss_count, unique_plays), "
+					+ "accmult(count300, count100, count50, countmiss), 1, 1) as pp "
+					+ "from (select user_id, beatmaps.beatmap_id, cast(DATE_PART('day', NOW() - date_played) as int) as days, "
+					+ "LEAST(stars, 5) as stars, enabled_mods, rank, perfect, ss_count, playcount, passcount / 10 as unique_plays, "
+					+ "cast(ROW_NUMBER() OVER(partition by beatmaps.beatmap_id order by score desc) as int) as position, "
+					+ "count300, count100, count50, countmiss from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "inner join ss_count on beatmaps.beatmap_id = ss_count.beatmap_id) source) inter) final "
+					+ "inner join users on final.user_id = users.user_id group by username order by weighted_pp desc ) "
+					+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\ppv1truefull.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("ppv1 classic");
+		} catch (Exception e) {
+			System.out.println(e.getLocalizedMessage());
+		}
 	}
 	
 	public static void weeklyQueries(String start, String end, int week) {
@@ -470,6 +574,74 @@ public class OsuQuerier {
     	}
     }
 	
+	public static void miscalleneousQueries() {
+		try {
+			
+			Class.forName("org.postgresql.Driver");
+			Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
+			Statement s = connection.createStatement();
+			
+			String query = "insert into fc_count (select beatmaps.beatmap_id, coalesce(count(*), 0) as fc_count "
+					+ "from beatmaps left outer join maxscore on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "where (maxcombo - combo) <= count100 and countmiss = 0 and enabled_mods not in "
+					+ "(select value from mods where name like '%HT%' or name like '%EZ%') "
+					+ "group by beatmaps.beatmap_id) ON CONFLICT (beatmap_id) DO UPDATE SET fc_count = excluded.fc_count";
+			s.execute(query);
+			System.out.println("fc count");
+			
+			
+			query = "insert into ss_count (select beatmaps.beatmap_id, coalesce(count(*), 0) as ss_count "
+					+ "from beatmaps left outer join maxscore on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "where rank like '%X%' and enabled_mods not in "
+					+ "(select value from mods where name like '%HT%' or name like '%EZ%') "
+					+ "group by beatmaps.beatmap_id) ON CONFLICT (beatmap_id) DO UPDATE SET ss_count = excluded.ss_count";
+			s.execute(query);
+			System.out.println("ss count");
+			
+			query = "Insert into first_fc (select b.beatmap_id, user_id, DATE_PART('day', date_played - b.approved_date) as difference "
+					+ "from (select user_id, beatmap_id, date_played, approved_date, ROW_NUMBER() OVER(partition by beatmap_id order by date_played asc) as date_rank "
+					+ "from (select user_id, beatmaps.beatmap_id, date_played, approved_date from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+					+ "where (maxcombo - combo) <= count100 and countmiss = 0 and enabled_mods not in "
+					+ "(select value from mods where name like '%HT%' or name like '%EZ%')) as fc) as b where date_rank = 1) ON CONFLICT DO NOTHING";
+			s.execute(query);
+			System.out.println("first fc");
+			
+			query = "Insert into first_ss (select b.beatmap_id, user_id, DATE_PART('day', date_played - approved_date) as difference "
+					+ "from (select user_id, beatmap_id, date_played, ROW_NUMBER() OVER(partition by beatmap_id order by date_played asc) as date_rank "
+					+ "from (select user_id, beatmap_id, date_played from scores where rank like '%X%' and enabled_mods not in "
+					+ "(select value from mods where name like '%HT%' or name like '%EZ%')) as ss) as b "
+					+ "inner join beatmaps on b.beatmap_id = beatmaps.beatmap_id where date_rank = 1) ON CONFLICT DO NOTHING";
+			s.execute(query);
+			System.out.println("first ss");
+			
+			query = "COPY (select username, count(*) from maxscore inner join users on users.user_id = maxscore.user_id "
+					+ "where maxscore.count100 = 1 and maxscore.countmiss = 0 and maxscore.count50 = 0 group by username order by count(*) desc) "
+					+ "TO 'C:\\\\Users\\\\sensa\\\\Documents\\\\VSCode\\\\bot\\\\data\\\\1x100.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("1x100");
+			query = "COPY (select username, count(*) from maxscore inner join users on users.user_id = maxscore.user_id "
+					+ "where maxscore.count100 = 0 and maxscore.countmiss = 0 and maxscore.count50 = 1 group by username order by count(*) desc) "
+					+ "TO 'C:\\\\Users\\\\sensa\\\\Documents\\\\VSCode\\\\bot\\\\data\\\\1x50.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("1x50");
+			query = "COPY (select username, count(*) from maxscore inner join users on users.user_id = maxscore.user_id "
+					+ "where maxscore.count100 = 0 and maxscore.countmiss = 1 and maxscore.count50 = 0 group by username order by count(*) desc) "
+					+ "TO 'C:\\\\Users\\\\sensa\\\\Documents\\\\VSCode\\\\bot\\\\data\\\\1xmiss.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("1x0");
+			query = "COPY (select username, count(*) from maxscore inner join users on users.user_id = maxscore.user_id "
+					+ "where maxscore.countmiss = 1 group by username order by count(*) desc) "
+					+ "TO 'C:\\\\Users\\\\sensa\\\\Documents\\\\VSCode\\\\bot\\\\data\\\\onemiss.csv' DELIMITER ',' CSV HEADER;";
+			s.execute(query);
+			System.out.println("1 miss");
+			
+			
+			
+		} catch(Exception e) {
+			System.out.println(e.getLocalizedMessage());
+		}
+	}
+	
 	public static void bonusQueries() {
 		try {
 			
@@ -575,6 +747,17 @@ public class OsuQuerier {
 				s.execute(query);
 				System.out.println(key + " score");
 				
+				query = "COPY (select username, (weighted_pp(pp_index, pp) + bonus_pp(count(pp_index))) as weighted_pp "
+						+ "from (select maxscore.user_id, maxscore.beatmap_id, pp, "
+						+ "ROW_NUMBER() OVER(partition by maxscore.user_id order by pp desc) as pp_index "
+						+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+						+ "where stars >= " + lower + " and stars < " + higher + " "
+						+ ") as a inner join users on a.user_id = users.user_id "
+						+ "group by username order by weighted_pp desc limit 5000) "
+						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\weightedpp_" + key + ".csv' DELIMITER ',' CSV HEADER;";
+				s.execute(query);
+				System.out.println("weighted pp");
+				
 				query = "COPY (select username, count(*) as fc_count from "
 						+ "(select user_id from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
 						+ "where stars >= " + lower + " and stars < " + higher + " "
@@ -629,7 +812,7 @@ public class OsuQuerier {
 			}
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			System.out.println(e.getLocalizedMessage());
 		}
 
 	}
@@ -641,8 +824,51 @@ public class OsuQuerier {
 	        Statement s = connection.createStatement();
 	        
 	        ArrayList<String> entries = new ArrayList<>();
+	        entries.add("%hitogata%ryuusei%");
+	        entries.add("%sword%art%online%");
+	        entries.add("%demetori%");
+	        entries.add("%dragonforce%");
+	        entries.add("%touhou%");
+	        for(String entry : entries) {
+		        String query = "COPY (select username, count(*) as total_fc from "
+						+ "(select user_id from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+						+ "where LOWER(source || ' ' || tags || ' ' || artist || ' ' || title || ' ' || creator) like '" + entry + "' and enabled_mods not in (select value from mods where name like '%HT%' or name like '%EZ%')"
+						+ "and (maxcombo - combo) <= count100 and countmiss = 0) as a inner join users on a.user_id = users.user_id"
+						+ " group by username order by total_fc desc limit 5000) "
+						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\fc_" + entry + ".csv' DELIMITER ',' CSV HEADER;";
+		        s.execute(query);
+				System.out.println(entry + " fc");
+				
+				query = "COPY (select username, count(*) as total_ss from "
+						+ "(select user_id from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+						+ "where LOWER(source || ' ' || tags || ' ' || artist || ' ' || title || ' ' || creator) like '" + entry + "' and enabled_mods not in (select value from mods where name like '%HT%' or name like '%EZ%')"
+						+ "and rank like 'X%') as a inner join users on a.user_id = users.user_id"
+						+ " group by username order by total_ss desc limit 5000) "
+						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\ss_" + entry + ".csv' DELIMITER ',' CSV HEADER;";
+				s.execute(query);
+				System.out.println(entry + " total ss");
+				
+				query = "COPY (select username, sum(score) as ranked_score "
+						+ "from (select user_id, beatmaps.beatmap_id, score "
+						+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+						+ "where LOWER(source || ' ' || tags || ' ' || artist || ' ' || title || ' ' || creator) like '" + entry + "') as a "
+						+ "inner join users on a.user_id = users.user_id "
+						+ "group by username order by ranked_score desc limit 5000) "
+						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\" +  "score_" + entry + ".csv' DELIMITER ',' CSV HEADER;";
+				s.execute(query);
+				System.out.println(entry + " score");
+				query = "COPY (select username, count(*) as clears from (select user_id "
+						+ "from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
+						+ "where LOWER(source || ' ' || tags || ' ' || artist || ' ' || title || ' ' || creator) like '" + entry + "') as a "
+						+ "inner join users on a.user_id = users.user_id group by username order by clears desc limit 5000) "
+						+ "TO 'C:\\Users\\sensa\\Documents\\VSCode\\bot\\data\\clears_" + entry + ".csv' DELIMITER ',' CSV HEADER;";
+				s.execute(query);
+				System.out.println(entry + " clears");
+	        }
+	        
+	        entries.clear();
 	        entries.add("5.00");
-	        //entries.add("6.00");
+	        entries.add("6.00");
 	        for(String entry : entries) {
 	        	String query = "COPY (select username, count(*) as total_ss from "
 						+ "(select user_id from maxscore inner join beatmaps on maxscore.beatmap_id = beatmaps.beatmap_id "
@@ -696,7 +922,7 @@ public class OsuQuerier {
 	        		+ "(select * from maxscore where user_id in (select * from priorityuser)) a inner join beatmaps on a.beatmap_id = beatmaps.beatmap_id "
 	        		+ "where countmiss = 0 and count100 >= (maxcombo - combo) and enabled_mods not in "
 	        		+ "(select value from mods where name like '%EZ%' or name like '%HT%') group by difficulty, user_id) "
-	        		+ "on conflict (user_id, difficulty) do update set fc = EXCLUDED.fc";
+	        		+ "on conflict (user_id, stars) do update set fc = EXCLUDED.fc";
 	        
 	        s.executeUpdate(query);
 	        
@@ -705,7 +931,7 @@ public class OsuQuerier {
 	        query = "insert into ss_by_sr (select user_id, round(stars, 2) as difficulty, count(*) as ss_count from "
 	        		+ "(select * from maxscore where user_id in (select * from priorityuser) and rank like '%X%' ) a "
 	        		+ "inner join beatmaps on a.beatmap_id = beatmaps.beatmap_id group by difficulty, user_id) "
-	        		+ "on conflict (user_id, difficulty) do update set ss = EXCLUDED.ss";
+	        		+ "on conflict (user_id, stars) do update set ss = EXCLUDED.ss";
 	        
 	        s.executeUpdate(query);
 	        
@@ -714,7 +940,7 @@ public class OsuQuerier {
 	        query = "Insert into clears_by_sr (select user_id, round(stars, 2) as difficulty, count(*) as clear_count from "
 	        		+ "(select * from maxscore where user_id in (select * from priorityuser)) a "
 	        		+ "inner join beatmaps on a.beatmap_id = beatmaps.beatmap_id group by difficulty, user_id) "
-	        		+ "on conflict (user_id, difficulty) do update set clears = EXCLUDED.clears";
+	        		+ "on conflict (user_id, stars) do update set clears = EXCLUDED.clears";
 	        
 	        s.executeUpdate(query);
 	        
@@ -723,7 +949,7 @@ public class OsuQuerier {
 	        query = "Insert into score_by_sr (select user_id, round(stars, 2) as difficulty, sum(score) as score_amount from "
 	        		+ "(select * from maxscore where user_id in (select * from priorityuser)) a "
 	        		+ "inner join beatmaps on a.beatmap_id = beatmaps.beatmap_id group by difficulty, user_id) "
-	        		+ "on conflict (user_id, difficulty) do update set score = EXCLUDED.score;";
+	        		+ "on conflict (user_id, stars) do update set score = EXCLUDED.score;";
 	        
 	        s.executeUpdate(query);
 	        
@@ -735,88 +961,44 @@ public class OsuQuerier {
 		}
 	}
 	
-	public static void createscoremax() {
-		int counter = 0;
-		int total = 0;
-		try {
-			Class.forName("org.postgresql.Driver");
-            Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
-            for(int i = 0; i < 3000000; i += 5000) {
-				Statement s = connection.createStatement();
-				ResultSet idSet = s.executeQuery(
-						"select user_id, beatmap_id, score, count300, count100, count50, countmiss, combo, perfect, enabled_mods, date_played, rank, pp, "
-						+ "replay_available from scores where beatmap_id >= " + i + " and beatmap_id < " + (i + 5000));
-				Statement s2 = connection.createStatement();
-
-				while (idSet.next()) {
-
-					String user_id = (idSet.getString("user_id"));
-					String beatmap_id = idSet.getString("beatmap_id");
-					String score = (idSet.getString("score"));
-					String count300 = (idSet.getString("count300"));
-					String count100 = (idSet.getString("count100"));
-					String count50 = (idSet.getString("count50"));
-					String countmiss = (idSet.getString("countmiss"));
-					String combo = (idSet.getString("combo"));
-					String perfect = (idSet.getString("perfect"));
-					String enabled_mods = (idSet.getString("enabled_mods"));
-					String date_played = (idSet.getString("date_played"));
-					String rank = (idSet.getString("rank"));
-					String pp = (idSet.getString("pp"));
-					String replay_available = (idSet.getString("replay_available"));
-
-					String c = ",";
-					String q = "'";
-					String query = "insert into maxscore values (" + user_id + c + beatmap_id + c + score + c + count300
-							+ c + count100 + c + count50 + c + countmiss + c + combo + c + perfect + c + q
-							+ enabled_mods + q + c + q + date_played + q + c + q + rank + q + c + pp + c
-							+ replay_available + ") "
-							+ "on conflict on constraint maxscore_pkey do update set score = excluded.score, count300 = EXCLUDED.count300, "
-							+ "count100 = EXCLUDED.count100, count50 = EXCLUDED.count50, countmiss = EXCLUDED.countmiss, combo = EXCLUDED.combo, "
-							+ "perfect = EXCLUDED.perfect, enabled_mods = EXCLUDED.enabled_mods, date_played = EXCLUDED.date_played, rank = EXCLUDED.rank, "
-							+ "pp = EXCLUDED.pp, replay_available = EXCLUDED.replay_available where EXCLUDED.score > maxscore.score;";
-
-					total += s2.executeUpdate(query);
-					counter++;
-					if (counter % 1000 == 0) {
-						System.out.println(total);
-					}
-            }
-            
-                
-                
-            }
-		} catch(Exception e) {
-			System.out.println(e.getLocalizedMessage());
-		}
-	}
-	
 	public static void updateCompletionists() {
-		ArrayList<String> user_list = new ArrayList<>();
-		user_list.add("6245906");
-		user_list.add("1023489");
-		user_list.add("2927048");
-		user_list.add("3172980");
-		user_list.add("7635621");
-		user_list.add("4781004");
-		user_list.add("2264338");
-		user_list.add("47844");
-		user_list.add("9217626");
-		user_list.add("5444914");
-		
 		try {
 			Class.forName("org.postgresql.Driver");
             Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
             Statement s = connection.createStatement();
             s.executeUpdate("delete from completionist");
-            for(String user : user_list) {
-            	s.executeUpdate("insert into completionist select beatmaps.beatmap_id, coalesce(user_id, " + user + "), "
-            			+ "case when enabled_mods in (select value from mods where name like '%HT%' or name like '%EZ%' or name like '%NF%') then 1 "
-            			+ "when countmiss > 0 then 2 when countmiss = 0 and (maxcombo - combo) > count100 then 3 "
-            			+ "when (maxcombo - combo) <= count100 and countmiss = 0 then 4 else 0 end as status "
-            			+ "from beatmaps left outer join (select * from maxscore where user_id = " + user + ") a on beatmaps.beatmap_id = a.beatmap_id where mode = 0");
-            	System.out.println(user);
-            }
+            s.executeUpdate("insert into completionist select beatmaps.beatmap_id, user_id, "
+            		+ "case when enabled_mods in (select value from mods where name like '%NF%') then 'NF' "
+            		+ "when enabled_mods in (select value from mods where name like '%HT%') then 'HT' "
+            		+ "when enabled_mods in (select value from mods where name like '%EZ%') then 'EZ' "
+            		+ "when countmiss > 0 then 'Miss' when countmiss = 0 and (maxcombo - combo) > count100 then 'Sliderbreak' "
+            		+ "when (maxcombo - combo) <= count100 and (count100 > 0 or count50 > 0) then 'FC' else 'SS' end as status "
+           			+ "from beatmaps inner join (select * from maxscore where user_id in (select * from alpha_user)) a on beatmaps.beatmap_id = a.beatmap_id where mode = 0");
+            System.out.println("completionist");
+		} catch(Exception e) {
+			System.out.println(e.getLocalizedMessage());
+		}
+	}
+	
+	public static void updateAll() {
+		try {
+			Class.forName("org.postgresql.Driver");
+            Connection connection = DriverManager.getConnection("jdbc:postgresql://127.0.0.1:5432/osu", "postgres", "root");
+            Statement s = connection.createStatement();
+            s.executeUpdate("insert into registeredscore select * from maxscore where user_id in (select * from priorityuser) "
+            		+ "on conflict on constraint registeredscore_pkey do update set score = excluded.score, count300 = EXCLUDED.count300, " 
+            		+ "count100 = EXCLUDED.count100, count50 = EXCLUDED.count50, countmiss = EXCLUDED.countmiss, combo = EXCLUDED.combo, "
+            		+ "perfect = EXCLUDED.perfect, enabled_mods = EXCLUDED.enabled_mods, date_played = EXCLUDED.date_played, rank = EXCLUDED.rank, "
+            		+ "pp = EXCLUDED.pp, replay_available = EXCLUDED.replay_available where EXCLUDED.score > registeredscore.score;");
+            s.executeUpdate("delete from registered");
+            s.executeUpdate("insert into registered select beatmaps.beatmap_id, user_id, "
+            		+ "case when enabled_mods in (select value from mods where name like '%NF%') then 'NF' "
+            		+ "when enabled_mods in (select value from mods where name like '%HT%') then 'HT' "
+            		+ "when enabled_mods in (select value from mods where name like '%EZ%') then 'EZ' "
+            		+ "when countmiss > 0 then 'Miss' when countmiss = 0 and (maxcombo - combo) > count100 then 'Sliderbreak' "
+            		+ "when (maxcombo - combo) <= count100 and (count100 > 0 or count50 > 0) then 'FC' else 'SS' end as status "
+           			+ "from beatmaps inner join registeredscore on beatmaps.beatmap_id = registeredscore.beatmap_id where mode = 0");
+            System.out.println("completionist");
 		} catch(Exception e) {
 			System.out.println(e.getLocalizedMessage());
 		}
