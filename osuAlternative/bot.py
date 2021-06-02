@@ -1080,4 +1080,4 @@ async def pp_fun(ctx, *, arg=None):
     await ctx.send(embed=embed)
     await updatelists()
 
-client.run('NzkyODA1MzUwNjU0NjA3NDMx.X-jDhQ.in_cIsmDMEYJLnyVAxBE63MtyrA')
+client.run(TOKEN)
